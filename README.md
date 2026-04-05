@@ -1,2 +1,2 @@
 # Undigital
-A Python game for ENGL 108D Digital Humanities
+A game for ENGL 108D Digital Humanities
