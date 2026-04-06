@@ -50,7 +50,7 @@ from game_constants import (
     WINDOW_HEIGHT,
     WINDOW_WIDTH,
 )
-from ui_helpers import draw_3d_text, draw_text, draw_text_left, draw_wrapped_text_center
+from ui_helpers import draw_3d_text, draw_text, draw_text_left, draw_wrapped_text_center, wrap_text_lines
 
 
 LevelMode = Literal["booktok", "forum", "logoff", "settings", "placeholder"]
@@ -75,7 +75,6 @@ class ForumComment(TypedDict):
     is_bad: bool
     age: float
     life: float
-    approve_rect: pygame.Rect
     disapprove_rect: pygame.Rect
 
 
@@ -136,6 +135,7 @@ def main() -> None:
     forum_title_font = pygame.font.SysFont(None, 34)
     forum_text_font = pygame.font.SysFont(None, 24)
     forum_comment_font = pygame.font.SysFont(None, 22)
+    level3_task_names = ("Read", "Make Tea", "Water Plant", "Stretch")
 
     game_state = "menu"
     selected_index = 0
@@ -169,7 +169,6 @@ def main() -> None:
     level3_active_task: str | None = None
     level3_clear_progress = 0.0
     level3_active_notification = -1
-    level3_focus_streak = 1
     level4_features: list[Level4Feature] = []
     level4_extra_index = 0
     level4_reenable_timer_ms = 0
@@ -190,7 +189,7 @@ def main() -> None:
         nonlocal level3_notifications, level3_notification_timer_ms, level3_stress
         nonlocal level3_break, level3_task_progress, level3_elapsed, level3_result
         nonlocal level3_pending_tasks, level3_task_cooldowns, level3_task_spawn_timer
-        nonlocal level3_active_task, level3_clear_progress, level3_active_notification, level3_focus_streak
+        nonlocal level3_active_task, level3_clear_progress, level3_active_notification
         nonlocal level4_features, level4_extra_index, level4_reenable_timer_ms
         nonlocal level4_new_feature_timer_ms, level4_popup_timer_ms, level4_popup_stack
         nonlocal level4_popup_serial, level4_popup_seen, level4_elapsed, level4_result, level4_scroll
@@ -225,13 +224,12 @@ def main() -> None:
             level3_task_progress = 0.0
             level3_elapsed = 0.0
             level3_result = None
-            level3_pending_tasks = ["Do Work"]
-            level3_task_cooldowns = {"Do Work": 0.0, "Water Plant": 2.5, "Make Meal": 5.0}
+            level3_pending_tasks = ["Read"]
+            level3_task_cooldowns = {"Read": 0.0, "Make Tea": 2.0, "Water Plant": 4.0, "Stretch": 6.0}
             level3_task_spawn_timer = 4.0
             level3_active_task = None
             level3_clear_progress = 0.0
             level3_active_notification = -1
-            level3_focus_streak = 1
         elif mode_in == "settings":
             level4_features = [{"name": feature_name, "on": True, "active": True} for feature_name in LEVEL4_BASE_FEATURES]
             level4_extra_index = 0
@@ -377,6 +375,9 @@ def main() -> None:
             28,
         )
 
+    def briefing_understand_rect() -> pygame.Rect:
+        return pygame.Rect(WINDOW_WIDTH // 2 - 130, WINDOW_HEIGHT // 2 + 90, 260, 50)
+
     def level4_top_popup_close_rect(popup: Level4Popup) -> pygame.Rect:
         return pygame.Rect(
             int(popup["x"]) + int(popup["w"]) - 34,
@@ -449,7 +450,7 @@ def main() -> None:
                 and event.button == 1
                 and game_state == "briefing"
             ):
-                understand_rect = pygame.Rect(WINDOW_WIDTH // 2 - 110, WINDOW_HEIGHT // 2 + 95, 220, 42)
+                understand_rect = briefing_understand_rect()
                 if understand_rect.collidepoint(event.pos):
                     start_level(active_level)
                     game_state = "playing"
@@ -461,20 +462,7 @@ def main() -> None:
                 and forum_result is None
             ):
                 for comment in forum_comments[:]:
-                    approve_rect = comment["approve_rect"]
                     disapprove_rect = comment["disapprove_rect"]
-                    if approve_rect.collidepoint(event.pos):
-                        if comment["is_bad"]:
-                            forum_points -= 1
-                            forum_safety_score = max(0, forum_safety_score - 4)
-                            forum_points_delta = -1
-                        else:
-                            forum_points += 1
-                            forum_safety_score = min(100, forum_safety_score + 1)
-                            forum_points_delta = 1
-                        forum_points_delta_timer = forum_points_delta_duration
-                        forum_comments.remove(comment)
-                        break
                     if disapprove_rect.collidepoint(event.pos):
                         if comment["is_bad"]:
                             forum_ban_flash = 0.18
@@ -617,7 +605,6 @@ def main() -> None:
                                     "is_bad": is_bad,
                                     "age": 0.0,
                                     "life": FORUM_COMMENT_LIFE,
-                                    "approve_rect": pygame.Rect(0, 0, 84, 28),
                                     "disapprove_rect": pygame.Rect(0, 0, 104, 28),
                                 }
                             )
@@ -627,12 +614,15 @@ def main() -> None:
 
                     for comment in forum_comments[:]:
                         if float(comment["age"]) >= float(comment["life"]):
+                            # Faded comments are auto-approved.
                             if comment["is_bad"]:
-                                forum_points -= 2
+                                forum_points -= 1
                                 forum_safety_score = max(0, forum_safety_score - 4)
-                                forum_points_delta = -2
+                                forum_points_delta = -1
                             else:
-                                forum_points_delta = 0
+                                forum_points += 1
+                                forum_safety_score = min(100, forum_safety_score + 1)
+                                forum_points_delta = 1
                             forum_points_delta_timer = forum_points_delta_duration
                             forum_comments.remove(comment)
 
@@ -643,15 +633,19 @@ def main() -> None:
 
                 for comment_index, comment in enumerate(forum_comments):
                     comment["rect"].y = FORUM_THREAD_COMMENTS_TOP + comment_index * FORUM_COMMENT_ROW_HEIGHT
-                    comment["approve_rect"].x = comment["rect"].right - 204
-                    comment["approve_rect"].y = comment["rect"].y + 4
-                    comment["disapprove_rect"].x = comment["rect"].right - 112
+                    comment["disapprove_rect"].x = comment["rect"].right - 122
                     comment["disapprove_rect"].y = comment["rect"].y + 4
             elif active_level.get("mode") == "logoff":
-                work_rect = pygame.Rect(90, 140, 130, 90)
-                meal_rect = pygame.Rect(290, 280, 110, 85)
-                plant_rect = pygame.Rect(160, 430, 120, 95)
-                task_rects = {"Do Work": work_rect, "Make Meal": meal_rect, "Water Plant": plant_rect}
+                read_rect = pygame.Rect(70, 130, 170, 95)
+                tea_rect = pygame.Rect(285, 130, 170, 95)
+                plant_rect = pygame.Rect(70, 285, 170, 95)
+                stretch_rect = pygame.Rect(285, 285, 170, 95)
+                task_rects = {
+                    "Read": read_rect,
+                    "Make Tea": tea_rect,
+                    "Water Plant": plant_rect,
+                    "Stretch": stretch_rect,
+                }
                 phone_screen_rect = pygame.Rect(WINDOW_WIDTH - 240, 120, 210, WINDOW_HEIGHT - 160)
                 mouse_pos = pygame.mouse.get_pos()
                 mouse_down = pygame.mouse.get_pressed()[0]
@@ -682,14 +676,14 @@ def main() -> None:
                     if level3_task_spawn_timer <= 0.0:
                         available_tasks = [
                             task_name
-                            for task_name in ("Do Work", "Make Meal", "Water Plant")
+                            for task_name in level3_task_names
                             if task_name not in level3_pending_tasks and level3_task_cooldowns[task_name] <= 0.0
                         ]
                         if available_tasks:
                             level3_pending_tasks.append(available_tasks[0])
                         level3_task_spawn_timer = LEVEL3_TASK_SPAWN_SECONDS
 
-                    stress_gain = dt * (effective_notifications * 1.6)
+                    stress_gain = dt * (effective_notifications * 3.0)
                     level3_stress = min(100.0, level3_stress + stress_gain)
 
                     hovered_task_name = None
@@ -712,9 +706,8 @@ def main() -> None:
                         completed_task = level3_active_task
                         level3_task_progress = 0.0
                         level3_active_task = None
-                        break_gain = 6.0 * float(level3_focus_streak)
+                        break_gain = 10.0
                         level3_break = min(100.0, level3_break + break_gain)
-                        level3_focus_streak += 1
                         if completed_task in level3_pending_tasks:
                             level3_pending_tasks.remove(completed_task)
                         level3_task_cooldowns[completed_task] = LEVEL3_TASK_COOLDOWN_SECONDS
@@ -741,8 +734,8 @@ def main() -> None:
                         level3_clear_progress = 0.0
                         if 0 <= level3_active_notification < len(level3_notifications):
                             level3_notifications.pop(level3_active_notification)
+                            level3_stress = max(0.0, level3_stress - 20.0)
                         level3_active_notification = -1
-                        level3_focus_streak = 1
 
                     if level3_break >= 100.0:
                         level3_result = "win"
@@ -843,20 +836,34 @@ def main() -> None:
             panel = pygame.Rect(90, 90, WINDOW_WIDTH - 180, WINDOW_HEIGHT - 180)
             pygame.draw.rect(screen, (32, 39, 58), panel, border_radius=14)
             pygame.draw.rect(screen, (74, 89, 126), panel, width=2, border_radius=14)
-            draw_text(screen, title_font, str(active_level["name"]), (239, 243, 252), (WINDOW_WIDTH // 2, 145))
+            title_top = 114
+            draw_wrapped_text_center(
+                screen,
+                menu_font,
+                str(active_level["name"]),
+                (239, 243, 252),
+                WINDOW_WIDTH // 2,
+                title_top,
+                panel.width - 80,
+                line_gap=4,
+            )
 
             mode = str(active_level.get("mode", "placeholder"))
             objective_lines = LEVEL_OBJECTIVES.get(mode, LEVEL_OBJECTIVES["placeholder"])
-            y = 210
+            y = 206
+            objective_max_width = panel.width - 90
             for objective_index, line in enumerate(objective_lines):
                 color = (234, 239, 250) if objective_index == 0 else (206, 215, 233)
-                draw_text(screen, hud_font, line, color, (WINDOW_WIDTH // 2, y))
-                y += 38
+                wrapped_lines = wrap_text_lines(hud_font, line, objective_max_width)
+                for wrapped_line in wrapped_lines:
+                    draw_text(screen, hud_font, wrapped_line, color, (WINDOW_WIDTH // 2, y))
+                    y += 34
+                y += 4
 
-            understand_rect = pygame.Rect(WINDOW_WIDTH // 2 - 110, WINDOW_HEIGHT // 2 + 95, 220, 42)
+            understand_rect = briefing_understand_rect()
             pygame.draw.rect(screen, (102, 128, 188), understand_rect, border_radius=10)
             pygame.draw.rect(screen, (147, 170, 224), understand_rect, width=2, border_radius=10)
-            draw_text(screen, hud_font, "I Understand", (245, 248, 255), understand_rect.center)
+            draw_text(screen, forum_text_font, "I Understand", (245, 248, 255), understand_rect.center)
             draw_text(screen, forum_text_font, "Click to begin", (176, 188, 212), (WINDOW_WIDTH // 2, understand_rect.bottom + 26))
         else:
             screen.fill(active_level["bg_color"])
@@ -956,7 +963,7 @@ def main() -> None:
                 pygame.draw.rect(screen, (191, 199, 217), post_rect, width=2, border_radius=8)
                 draw_text_left(screen, forum_text_font, FORUM_POST_TITLE, (33, 35, 47), (34, 102))
                 draw_text_left(screen, forum_text_font, FORUM_POST_BODY, (65, 67, 82), (34, 130))
-                draw_text_left(screen, forum_text_font, "Approve or Disapprove each comment before it fades.", (65, 67, 82), (34, 156))
+                draw_text_left(screen, forum_text_font, "Disapprove harmful comments. Faded comments are auto-approved.", (65, 67, 82), (34, 156))
                 draw_text_left(screen, forum_text_font, f"Points: {forum_points}", (33, 35, 47), (WINDOW_WIDTH - 162, 156))
 
                 pygame.draw.rect(screen, (255, 255, 255), thread_rect, border_radius=8)
@@ -995,13 +1002,9 @@ def main() -> None:
                     text_y = comment_rect.y + (comment_rect.height - label_surface.get_height()) // 2
                     screen.blit(label_surface, (comment_rect.x + 10, text_y))
 
-                    approve_rect = comment["approve_rect"]
                     disapprove_rect = comment["disapprove_rect"]
-                    pygame.draw.rect(screen, (96, 170, 232), approve_rect, border_radius=4)
-                    pygame.draw.rect(screen, (73, 136, 194), approve_rect, width=1, border_radius=4)
                     pygame.draw.rect(screen, (145, 153, 171), disapprove_rect, border_radius=4)
                     pygame.draw.rect(screen, (110, 118, 136), disapprove_rect, width=1, border_radius=4)
-                    draw_text_left(screen, forum_comment_font, "Approve", (245, 248, 255), (approve_rect.x + 10, approve_rect.y + 5))
                     draw_text_left(screen, forum_comment_font, "Disapprove", (243, 245, 250), (disapprove_rect.x + 8, disapprove_rect.y + 5))
 
                 if forum_ban_flash > 0:
@@ -1054,10 +1057,16 @@ def main() -> None:
             elif active_level.get("mode") == "logoff":
                 phone_rect = pygame.Rect(WINDOW_WIDTH - 250, 70, 230, WINDOW_HEIGHT - 90)
                 phone_screen_rect = pygame.Rect(WINDOW_WIDTH - 240, 120, 210, WINDOW_HEIGHT - 160)
-                work_rect = pygame.Rect(90, 140, 130, 90)
-                meal_rect = pygame.Rect(290, 280, 110, 85)
-                plant_rect = pygame.Rect(160, 430, 120, 95)
-                task_rects = {"Do Work": work_rect, "Make Meal": meal_rect, "Water Plant": plant_rect}
+                read_rect = pygame.Rect(70, 130, 170, 95)
+                tea_rect = pygame.Rect(285, 130, 170, 95)
+                plant_rect = pygame.Rect(70, 285, 170, 95)
+                stretch_rect = pygame.Rect(285, 285, 170, 95)
+                task_rects = {
+                    "Read": read_rect,
+                    "Make Tea": tea_rect,
+                    "Water Plant": plant_rect,
+                    "Stretch": stretch_rect,
+                }
                 mouse_pos = pygame.mouse.get_pos()
 
                 pygame.draw.rect(screen, (38, 44, 60), pygame.Rect(20, 70, WINDOW_WIDTH - 280, WINDOW_HEIGHT - 90), border_radius=10)
@@ -1065,9 +1074,10 @@ def main() -> None:
 
                 ticks = pygame.time.get_ticks()
                 for rect, label, color in (
-                    (work_rect, "Do Work", (160, 148, 124)),
-                    (meal_rect, "Make Meal", (176, 132, 106)),
+                    (read_rect, "Read", (119, 132, 166)),
+                    (tea_rect, "Make Tea", (176, 132, 106)),
                     (plant_rect, "Water Plant", (105, 149, 108)),
+                    (stretch_rect, "Stretch", (133, 123, 174)),
                 ):
                     is_pending = label in level3_pending_tasks
                     is_hovered = rect.inflate(18, 18).collidepoint(mouse_pos)
@@ -1096,35 +1106,43 @@ def main() -> None:
                     growth_h = int(16 * level3_task_progress)
                     growth_rect = pygame.Rect(plant_rect.centerx - 4, plant_rect.y + 20 - growth_h, 8, growth_h)
                     pygame.draw.rect(screen, (128, 198, 130), growth_rect, border_radius=3)
-                elif level3_active_task == "Make Meal" and level3_task_progress > 0:
-                    pan_rect = pygame.Rect(meal_rect.x + 14, meal_rect.y + 30, meal_rect.width - 30, 28)
-                    pygame.draw.rect(screen, (92, 98, 112), pan_rect, border_radius=12)
-                    pygame.draw.rect(screen, (72, 78, 92), pan_rect, width=2, border_radius=12)
-                    for bubble_index in range(6):
-                        bubble_x = pan_rect.x + 10 + bubble_index * 12
-                        bubble_offset = ((ticks // 85 + bubble_index * 3) % 10)
-                        bubble_y = pan_rect.y + 8 + bubble_offset
-                        radius = 2 + ((ticks // 150 + bubble_index) % 2)
-                        pygame.draw.circle(screen, (241, 218, 161), (bubble_x, bubble_y), radius)
+                elif level3_active_task == "Make Tea" and level3_task_progress > 0:
+                    kettle_rect = pygame.Rect(tea_rect.x + 16, tea_rect.y + 28, tea_rect.width - 58, 34)
+                    pygame.draw.rect(screen, (92, 98, 112), kettle_rect, border_radius=10)
+                    pygame.draw.rect(screen, (72, 78, 92), kettle_rect, width=2, border_radius=10)
+                    spout_a = (kettle_rect.right - 1, kettle_rect.y + 14)
+                    spout_b = (kettle_rect.right + 20, kettle_rect.y + 10)
+                    pygame.draw.line(screen, (92, 98, 112), spout_a, spout_b, 5)
+                    cup_rect = pygame.Rect(tea_rect.right - 44, tea_rect.y + 42, 24, 18)
+                    pygame.draw.rect(screen, (219, 227, 238), cup_rect, border_radius=5)
+                    pygame.draw.circle(screen, (219, 227, 238), (cup_rect.right + 3, cup_rect.y + 9), 4, 2)
+                    pour_len = int(20 * level3_task_progress)
+                    pygame.draw.line(screen, (237, 199, 130), spout_b, (spout_b[0], spout_b[1] + pour_len), 3)
                     for steam_index in range(3):
-                        steam_x = meal_rect.centerx - 18 + steam_index * 18
-                        steam_top = meal_rect.y + 6 - ((ticks // 95 + steam_index * 2) % 14)
-                        pygame.draw.line(screen, (229, 231, 238), (steam_x, meal_rect.y + 18), (steam_x + 4, steam_top), 2)
-                    stir_x = pan_rect.x + 8 + int((pan_rect.width - 16) * level3_task_progress)
-                    pygame.draw.line(screen, (224, 174, 110), (stir_x, pan_rect.y + 4), (stir_x - 6, pan_rect.y + 20), 3)
-                elif level3_active_task == "Do Work" and level3_task_progress > 0:
-                    laptop_rect = pygame.Rect(work_rect.x + 16, work_rect.y + 20, work_rect.width - 32, 46)
-                    pygame.draw.rect(screen, (70, 78, 98), laptop_rect, border_radius=5)
-                    pygame.draw.rect(screen, (52, 58, 76), laptop_rect, width=2, border_radius=5)
+                        steam_x = cup_rect.centerx - 8 + steam_index * 8
+                        steam_top = cup_rect.y - 8 - ((ticks // 95 + steam_index * 2) % 12)
+                        pygame.draw.line(screen, (229, 231, 238), (steam_x, cup_rect.y + 2), (steam_x + 2, steam_top), 2)
+                elif level3_active_task == "Read" and level3_task_progress > 0:
+                    book_rect = pygame.Rect(read_rect.x + 22, read_rect.y + 26, read_rect.width - 44, 42)
+                    pygame.draw.rect(screen, (234, 239, 246), book_rect, border_radius=6)
+                    pygame.draw.line(screen, (154, 166, 188), (book_rect.centerx, book_rect.y + 4), (book_rect.centerx, book_rect.bottom - 4), 2)
                     for line_index in range(4):
-                        line_w = 22 + ((ticks // 85 + line_index * 4) % 30)
-                        line_rect = pygame.Rect(laptop_rect.x + 9, laptop_rect.y + 8 + line_index * 9, line_w, 3)
-                        pygame.draw.rect(screen, (198, 209, 236), line_rect, border_radius=2)
-                    cursor_x = laptop_rect.x + 10 + ((ticks // 70) % (laptop_rect.width - 20))
-                    cursor_y = laptop_rect.bottom - 8
-                    pygame.draw.line(screen, (246, 220, 132), (cursor_x, cursor_y), (cursor_x, cursor_y - 7), 2)
-                    pulse_w = 2 + ((ticks // 140) % 2)
-                    pygame.draw.rect(screen, (116, 144, 214), work_rect.inflate(8, 8), width=pulse_w, border_radius=9)
+                        line_y = book_rect.y + 8 + line_index * 8
+                        page_w = 26 + ((ticks // 90 + line_index * 5) % 16)
+                        pygame.draw.line(screen, (166, 178, 200), (book_rect.x + 8, line_y), (book_rect.x + 8 + page_w, line_y), 2)
+                        pygame.draw.line(screen, (166, 178, 200), (book_rect.centerx + 6, line_y), (book_rect.centerx + 6 + page_w, line_y), 2)
+                    turn_x = book_rect.x + int(book_rect.width * level3_task_progress)
+                    pygame.draw.line(screen, (246, 220, 132), (turn_x, book_rect.y + 4), (turn_x - 8, book_rect.bottom - 4), 2)
+                elif level3_active_task == "Stretch" and level3_task_progress > 0:
+                    person_x = stretch_rect.centerx
+                    person_y = stretch_rect.y + 62
+                    swing = int(10 * level3_task_progress)
+                    pygame.draw.circle(screen, (230, 214, 190), (person_x, person_y - 34), 9)
+                    pygame.draw.line(screen, (208, 217, 235), (person_x, person_y - 24), (person_x, person_y + 8), 4)
+                    pygame.draw.line(screen, (208, 217, 235), (person_x, person_y - 10), (person_x - 20 - swing, person_y - 24), 4)
+                    pygame.draw.line(screen, (208, 217, 235), (person_x, person_y - 10), (person_x + 20 + swing, person_y - 24), 4)
+                    pygame.draw.line(screen, (208, 217, 235), (person_x, person_y + 8), (person_x - 12, person_y + 28), 4)
+                    pygame.draw.line(screen, (208, 217, 235), (person_x, person_y + 8), (person_x + 12, person_y + 28), 4)
 
                 if level3_active_task is not None:
                     active_rect = task_rects[level3_active_task]
@@ -1144,6 +1162,7 @@ def main() -> None:
                 pygame.draw.rect(screen, (78, 88, 114), phone_rect, width=2, border_radius=14)
                 pygame.draw.rect(screen, (41, 47, 66), phone_screen_rect, border_radius=8)
                 draw_text(screen, hud_font, "Phone", (220, 226, 242), (phone_rect.centerx, 92))
+                draw_text_left(screen, forum_comment_font, "Clear alerts to lower Stress.", (178, 194, 224), (phone_screen_rect.x, phone_rect.bottom - 30))
 
                 for notif_index, notif_text in enumerate(level3_notifications):
                     notif_rect = level3_notification_rect(phone_screen_rect, notif_index)
@@ -1164,8 +1183,8 @@ def main() -> None:
                 pygame.draw.rect(screen, (77, 77, 90), break_bar, border_radius=5)
                 pygame.draw.rect(screen, (114, 214, 166), (break_bar.x, break_bar.y, int(break_bar.width * (level3_break / 100.0)), break_bar.height), border_radius=5)
                 draw_text_left(screen, forum_text_font, f"Stress Meter: {int(level3_stress)}", (235, 239, 248), (20, 38))
-                draw_text_left(screen, forum_text_font, f"Progress Meter: {int(level3_break)}", (235, 239, 248), (290, 38))
-                draw_text_left(screen, forum_text_font, f"Focus Multiplier: x{level3_focus_streak}", (200, 214, 238), (20, 58))
+                draw_text_left(screen, forum_text_font, f"Break Meter: {int(level3_break)}", (235, 239, 248), (290, 38))
+                draw_text_left(screen, forum_text_font, "Offline tasks fill Break Meter. Notifications only lower Stress.", (200, 214, 238), (20, 58))
 
                 remaining = max(0, int(LEVEL3_TIME_LIMIT - level3_elapsed))
                 draw_text_left(screen, forum_text_font, f"Time Left: {remaining}s", (235, 239, 248), (560, 20))
@@ -1176,13 +1195,13 @@ def main() -> None:
                     screen.blit(overlay, (0, 0))
                     if level3_result == "win":
                         draw_text(screen, title_font, "You Win!", (245, 245, 255), (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 - 14))
-                        draw_text(screen, hud_font, "You took a real break before burnout.", (235, 235, 245), (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 24))
+                        draw_text(screen, hud_font, "You completed your wellness break tasks.", (235, 235, 245), (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 24))
                     elif level3_result == "stress":
                         draw_text(screen, title_font, "You Lost!", (245, 245, 255), (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 - 14))
-                        draw_text(screen, hud_font, "Stress Meter filled completely.", (235, 235, 245), (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 24))
+                        draw_text(screen, hud_font, "Stress Meter filled from notification pressure.", (235, 235, 245), (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 24))
                     else:
                         draw_text(screen, title_font, "Time Up!", (245, 245, 255), (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 - 14))
-                        draw_text(screen, hud_font, "Progress Meter did not fill in time.", (235, 235, 245), (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 24))
+                        draw_text(screen, hud_font, "Break Meter did not fill in time.", (235, 235, 245), (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 24))
                     draw_text(screen, hud_font, "Press Enter for menu", (215, 215, 230), (WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2 + 62))
             elif active_level.get("mode") == "settings":
                 layout = level4_layout()

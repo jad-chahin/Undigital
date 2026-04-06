@@ -6,7 +6,7 @@ PLAYER_SIZE = 40
 LEVELS = [
     {"name": "Level 1 - Build Your Feed", "bg_color": (18, 18, 28), "mode": "booktok"},
     {"name": "Level 2 - Protect the Space", "bg_color": (232, 236, 246), "mode": "forum"},
-    {"name": "Level 3 - Log Off for a Bit", "bg_color": (27, 32, 48), "mode": "logoff"},
+    {"name": "Level 3 - Wellness Break", "bg_color": (27, 32, 48), "mode": "logoff"},
     {"name": "Level 4 - Manage Yourself", "bg_color": (23, 28, 39), "mode": "settings"},
 ]
 
@@ -51,16 +51,16 @@ FORUM_BAD_COMMENTS = [
     "Your voice does not matter here.",
     "You're all delusional.",
 ]
-FORUM_SPAWN_MS = 1450
-FORUM_COMMENT_LIFE = 7.8
+FORUM_SPAWN_MS = 1250
+FORUM_COMMENT_LIFE = 6.8
 FORUM_THREAD_COMMENTS_TOP = 260
 FORUM_COMMENT_ROW_HEIGHT = 42
 
-LEVEL3_TIME_LIMIT = 75.0
+LEVEL3_TIME_LIMIT = 56.25
 LEVEL3_NOTIFICATION_SPAWN_MS = 3200
 LEVEL3_NOTIFICATION_MAX = 5
 LEVEL3_TASK_HOLD_SECONDS = 2.2
-LEVEL3_CLEAR_HOLD_SECONDS = 1.0
+LEVEL3_CLEAR_HOLD_SECONDS = 2.0
 LEVEL3_TASK_SPAWN_SECONDS = 5.5
 LEVEL3_TASK_COOLDOWN_SECONDS = 11.0
 LEVEL3_NOTIFICATION_TEXTS = [
@@ -288,8 +288,8 @@ LEVEL_OBJECTIVES = {
     ],
     "logoff": [
         "Objective:",
-        "Fill the Progress Meter before time runs out.",
-        "Complete offline tasks and manage notification pressure.",
+        "Fill the Break Meter before time runs out.",
+        "Offline tasks fill Break Meter. Clearing notifications only lowers Stress.",
     ],
     "settings": [
         "Objective:",

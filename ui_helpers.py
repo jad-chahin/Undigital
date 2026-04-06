@@ -1,6 +1,23 @@
 import pygame
 
 
+def wrap_text_lines(font: pygame.font.Font, text: str, max_width: int) -> list[str]:
+    words = text.split()
+    if not words:
+        return []
+    lines: list[str] = []
+    current = words[0]
+    for word in words[1:]:
+        trial = f"{current} {word}"
+        if font.size(trial)[0] <= max_width:
+            current = trial
+        else:
+            lines.append(current)
+            current = word
+    lines.append(current)
+    return lines
+
+
 def draw_text(
     screen: pygame.Surface,
     font: pygame.font.Font,
@@ -35,19 +52,9 @@ def draw_wrapped_text_center(
     max_width: int,
     line_gap: int = 4,
 ) -> None:
-    words = text.split()
-    if not words:
+    lines = wrap_text_lines(font, text, max_width)
+    if not lines:
         return
-    lines: list[str] = []
-    current = words[0]
-    for word in words[1:]:
-        trial = f"{current} {word}"
-        if font.size(trial)[0] <= max_width:
-            current = trial
-        else:
-            lines.append(current)
-            current = word
-    lines.append(current)
 
     y = top_y
     for line in lines:
